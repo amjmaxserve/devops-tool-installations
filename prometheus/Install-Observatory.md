@@ -71,7 +71,7 @@ sudo systemctl status prometheus
 
 The service status should show `active (running)`.
 
-[image](prometheus1.png)
+![image](prometheus1.png)
 ---
 
 ## 2) Install Node Exporter
