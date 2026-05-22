@@ -177,3 +177,119 @@ sudo systemctl status prometheus
 
 ![image](prometheus2.png)
 ![image](node-exporter1.png)
+
+----------------------------------------------------------
+
+
+now installing grafana 
+
+1. Install Dependencies
+sudo apt update
+
+sudo apt install -y software-properties-common apt-transport-https wget gpg
+2. Add Grafana GPG Key
+sudo mkdir -p /etc/apt/keyrings
+wget -q -O - https://apt.grafana.com/gpg.key | \
+gpg --dearmor | \
+sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+3. Add Repository
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | \
+sudo tee /etc/apt/sources.list.d/grafana.list
+4. Install Grafana
+sudo apt update
+
+sudo apt install grafana -y
+5. Start Grafana
+sudo systemctl daemon-reload
+
+sudo systemctl enable grafana-server
+sudo systemctl start grafana-server
+6. Verify
+sudo systemctl status grafana-server
+
+Should show:
+
+active (running)
+
+open browser 192.168.29.8:3000 for the web UI
+
+default login 
+
+username: admin
+password: admin
+
+connect prometheus to grafana 
+
+connections --> data sources ---> add data source ---> prometheus
+
+
+
+save & test
+
+
+import dashboard 
+
+Create dashboard from prometheus to grafana and save it. 
+
+
+
+
+
+Install alert manager 
+
+
+create user for alert manager 
+
+ sudo useradd --no-create-home --shell /bin/false alertmanager
+
+ download source file from internet 
+
+ wget https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz
+
+ unzip the file 
+
+ tar -xvf alertmanager-0.28.1.linux-amd64.tar.gz
+
+enter to unzipped folder 
+
+cd alertmanager-0.28.1.linux-amd64/
+
+moving files to necessary locations 
+
+sudo cp alertmanager /usr/local/bin/
+sudo cp amtool /usr/local/bin/
+
+sudo chown alertmanager:alertmanager /usr/local/bin/alertmanager
+sudo chown alertmanager:alertmanager /usr/local/bin/amtool
+
+sudo chown -R alertmanager:alertmanager /etc/alertmanager
+
+# Create service for alert manager 
+sudo nano /etc/systemd/system/alertmanager.service
+
+[Unit]
+Description=Alertmanager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=alertmanager
+Group=alertmanager
+Type=simple
+
+ExecStart=/usr/local/bin/alertmanager \
+  --config.file=/etc/alertmanager/alertmanager.yml \
+  --storage.path=/var/lib/alertmanager
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+sudo systemctl enable alertmanager
+sudo systemctl start alertmanager
+sudo systemctl status alertmanager
+
+
+sudo systemctl status alertmanager
