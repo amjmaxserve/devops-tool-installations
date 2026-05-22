@@ -1,62 +1,108 @@
-# Prometheus Node Exporter Installation on Ubuntu 24.04
+# Prometheus installation
 
-This document describes a tested installation procedure for Prometheus Node Exporter on Ubuntu 24.04. The Node Exporter exposes hardware and OS metrics so a Prometheus server can scrape them.
+This document contains the complete, step-by-step process performed so far to install Prometheus and Node Exporter. All steps are preserved and presented in a clear, ordered sequence.
 
-## Prerequisites
+## 1) Install Prometheus
 
-- Ubuntu 24.04 server
-- `sudo` privileges
-- Internet access to download binaries
-- Prometheus server already installed or available on the network
-
-## 1. Update the system
-
-Keep the package cache and installed packages up to date.
+1. Update system packages:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 ```
 
-## 2. Create the node_exporter user
+2. Download Prometheus (the same version referenced previously):
 
-Create a dedicated, non-login user for the Node Exporter service.
+```bash
+wget https://github.com/prometheus/prometheus/releases/download/v3.5.3/prometheus-3.5.3.linux-amd64.tar.gz
+```
+
+3. Create directories and user for Prometheus:
+
+```bash
+sudo mkdir -p /etc/prometheus
+sudo mkdir -p /var/lib/prometheus
+sudo useradd --no-create-home --shell /bin/false prometheus
+sudo chown prometheus:prometheus /etc/prometheus
+sudo chown prometheus:prometheus /var/lib/prometheus
+```
+
+4. Extract the downloaded archive and copy binaries and config:
+
+```bash
+tar -xvf prometheus-3.5.3.linux-amd64.tar.gz
+cd prometheus-3.5.3.linux-amd64/
+sudo cp prometheus /usr/local/bin/
+sudo cp promtool /usr/local/bin/
+sudo chown prometheus:prometheus /usr/local/bin/prometheus
+sudo chown prometheus:prometheus /usr/local/bin/promtool
+sudo cp prometheus.yml /etc/prometheus/
+sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+```
+
+5. Create the systemd service file `/etc/systemd/system/prometheus.service` with the following contents:
+
+```ini
+[Unit]
+Description=Prometheus Monitoring
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/prometheus/
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+6. Reload systemd, start and enable Prometheus:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start prometheus
+sudo systemctl enable prometheus
+sudo systemctl status prometheus
+```
+
+The service status should show `active (running)`.
+
+Add any related images (e.g. `prometheus1.png`) here as needed.
+
+---
+
+## 2) Install Node Exporter
+
+1. Create a system user for Node Exporter:
 
 ```bash
 sudo useradd --no-create-home --shell /bin/false node_exporter
 ```
 
-## 3. Download the Node Exporter release
-
-Download the latest stable Node Exporter tarball. The example below uses version `1.9.1` because it is known to work in this setup.
+2. Download Node Exporter (as referenced previously):
 
 ```bash
-cd /tmp
 wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
 ```
 
-## 4. Extract and install the binary
-
-Extract the archive and copy the `node_exporter` binary to `/usr/local/bin`.
+3. Extract and install the binary:
 
 ```bash
 tar -xvf node_exporter-1.9.1.linux-amd64.tar.gz
-cd node_exporter-1.9.1.linux-amd64
+cd node_exporter-1.9.1.linux-amd64/
 sudo cp node_exporter /usr/local/bin/
-```
-
-Set ownership so the dedicated service user owns the binary.
-
-```bash
 sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 ```
 
-## 5. Create a systemd service unit
-
-Create the systemd unit file for Node Exporter at `/etc/systemd/system/node_exporter.service`.
+4. Create the systemd service file `/etc/systemd/system/node_exporter.service` with the following contents:
 
 ```ini
 [Unit]
-Description=Prometheus Node Exporter
+Description=Node Exporter
 Wants=network-online.target
 After=network-online.target
 
@@ -65,65 +111,69 @@ User=node_exporter
 Group=node_exporter
 Type=simple
 ExecStart=/usr/local/bin/node_exporter
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Save the file and then reload systemd.
+5. Reload systemd, start and enable Node Exporter:
 
 ```bash
 sudo systemctl daemon-reload
-```
-
-## 6. Start and enable node_exporter
-
-Enable the service to start on boot and then start it immediately.
-
-```bash
-sudo systemctl enable --now node_exporter
-```
-
-Verify the service status.
-
-```bash
+sudo systemctl start node_exporter
+sudo systemctl enable node_exporter
 sudo systemctl status node_exporter
 ```
 
-You should see `Active: active (running)` if the service is started correctly.
+The service status should show `active (running)`.
 
-## 7. Confirm Node Exporter is reachable
+---
 
-The default listening port is `9100`. Verify it locally using `curl`.
+## 3) Configure Prometheus to scrape Node Exporter
 
-```bash
-curl http://127.0.0.1:9100/metrics | head
-```
-
-If you see Prometheus-style metrics output, the exporter is running successfully.
-
-## 8. Add the target to Prometheus
-
-On the Prometheus server, update `prometheus.yml` to include the node exporter target.
+1. Edit `/etc/prometheus/prometheus.yml` and ensure it contains the Prometheus and Node Exporter scrape configs. The file used earlier looks like this:
 
 ```yaml
+# my global config
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
 scrape_configs:
-  - job_name: node_exporter
+  - job_name: "prometheus"
     static_configs:
-      - targets: ['<node-ip>:9100']
+      - targets: ["localhost:9090"]
+        labels:
+          app: "prometheus"
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['localhost:9100']
 ```
 
-Replace `<node-ip>` with the Ubuntu host IP or hostname.
-
-Reload or restart Prometheus on the server:
+2. After saving changes, restart Prometheus:
 
 ```bash
 sudo systemctl restart prometheus
 sudo systemctl status prometheus
 ```
 
-## Notes
+---
 
-- If you need a newer Node Exporter version, update the download URL and filename accordingly.
-- Do not use the `prometheus` system user for Node Exporter; keep services isolated by user.
-- For firewall-restricted environments, allow inbound TCP port `9100` from the Prometheus server.
+## 4) Verification and notes
+
+- Verify Prometheus web UI at `http://<server-ip>:9090`.
+- Verify Node Exporter metrics at `http://<server-ip>:9100/metrics`.
+- Add images such as `node-exporter.png` and `prometheus2.png` in this folder if you want screenshots embedded.
+
